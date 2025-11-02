@@ -4,6 +4,7 @@ pipeline {
     environment {
         IMAGE_NAME = 'node-app'
         CONTAINER_NAME = 'node-app-container'
+	PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     stages {
