@@ -8,8 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Copy the entire src folder
-COPY src ./src
+# Copy the entire project (including src/public)
+COPY . .
 
 # Expose port
 EXPOSE 3000
