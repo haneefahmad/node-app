@@ -1,17 +1,17 @@
 # Use official Node.js base image
 FROM node:18
 
-# Set working directory inside container
-WORKDIR /node-app
+# Set working directory inside the container
+WORKDIR /app
 
-# Copy package files first (for dependency caching)
+# Copy package files first (better caching)
 COPY package*.json ./
 RUN npm install
 
-# Copy entire project (including src/public)
-COPY src ./src
+# Copy the entire project (this includes src/public)
+COPY . .
 
-# Expose app port
+# Expose the port
 EXPOSE 3000
 
 # Start the Node.js app
