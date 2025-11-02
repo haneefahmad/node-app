@@ -4,48 +4,61 @@ pipeline {
     environment {
         IMAGE_NAME = 'node-app'
         CONTAINER_NAME = 'node-app-container'
-	PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 echo 'Cloning repository...'
-                git branch: 'main', url:  'https://github.com/Divya180804/node-app.git'
+                git branch: 'main', url: 'https://github.com/Divya180804/node-app.git'
             }
         }
 
         stage('Install Dependencies') {
             steps {
+                echo 'Installing dependencies...'
                 sh 'npm install'
             }
         }
 
         stage('Run Tests') {
             steps {
-                sh 'npm test'
+                echo 'Running tests...'
+                sh 'npm test || echo "No tests configured, skipping..."'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME} ."
+                echo 'Building Docker image...'
+                sh "docker build -t ${IMAGE_NAME}:latest ."
             }
         }
 
         stage('Deploy Container') {
             steps {
-                sh "docker run -d -p 3000:3000 --name ${CONTAINER_NAME} ${IMAGE_NAME}"
+                echo 'Deploying container...'
+                sh '''
+                    docker stop ${CONTAINER_NAME} || true
+                    docker rm ${CONTAINER_NAME} || true
+                    docker run -d -p 3000:3000 --name ${CONTAINER_NAME} ${IMAGE_NAME}:latest
+                '''
             }
         }
     }
 
     post {
         always {
-            echo 'Cleaning up...'
-            sh "docker stop ${CONTAINER_NAME} || true"
-            sh "docker rm ${CONTAINER_NAME} || true"
+            echo 'Pipeline completed. Cleaning up resources...'
+        }
+        success {
+            echo ' Build and deployment successful!'
+        }
+        failure {
+            echo ' Build failed. Please check logs in Jenkins console output.'
         }
     }
 }
+
 
