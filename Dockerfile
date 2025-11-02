@@ -2,14 +2,14 @@
 FROM node:18
 
 # Set working directory inside container
-WORKDIR /app
+WORKDIR /node-app
 
 # Copy package files first (for dependency caching)
 COPY package*.json ./
 RUN npm install
 
 # Copy entire project (including src/public)
-COPY . .
+COPY src ./src
 
 # Expose app port
 EXPOSE 3000
