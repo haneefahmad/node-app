@@ -2,15 +2,18 @@ pipeline {
     agent any
 
     environment {
+        AWS_ACCOUNT_ID = '132121093853'
+        AWS_REGION = 'us-east-1'
+        ECR_REPO_NAME = 'test'
         IMAGE_NAME = 'node-app'
         CONTAINER_NAME = 'node-app-container'
-        AWS_REGION = 'us-east-1'
-        ECR_REPO = '132121093853.dkr.ecr.us-east-1.amazonaws.com/test'
         IMAGE_TAG = 'latest'
+        ECR_REPO_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
         PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 echo 'Cloning repository...'
@@ -20,7 +23,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                echo 'Installing dependencies...'
+                echo 'Installing Node.js dependencies...'
                 sh 'npm install'
             }
         }
@@ -28,52 +31,69 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo 'Running tests...'
-                sh 'npm test || echo "No tests configured, skipping..."'
+                sh 'npm test || echo "No tests configured — skipping..."'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 echo 'Building Docker image...'
-                sh "docker build -t ${IMAGE_NAME}:latest ."
-                sh "docker tag ${IMAGE_NAME}:latest ${ECR_REPO}:${IMAGE_TAG}"
+                sh """
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPO_URI}:${IMAGE_TAG}
+                """
             }
         }
 
-        stage('Push to ECR') {
+        stage('Push to AWS ECR') {
             steps {
-                echo 'Logging in to AWS ECR and pushing Docker image...'
+                echo 'Authenticating and pushing Docker image to ECR...'
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds']]) {
                     sh """
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                        docker push ${ECR_REPO}:${IMAGE_TAG}
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        docker push ${ECR_REPO_URI}:${IMAGE_TAG}
                     """
                 }
             }
         }
 
-        stage('Deploy Container') {
+        stage('Deploy to EC2') {
             steps {
-                echo 'Deploying container from ECR image...'
+                echo 'Deploying container on EC2 instance...'
                 sh """
+                    echo "Stopping old container if running..."
                     docker stop ${CONTAINER_NAME} || true
                     docker rm ${CONTAINER_NAME} || true
-                    docker pull ${ECR_REPO}:${IMAGE_TAG}
-                    docker run -d -p 3000:3000 --name ${CONTAINER_NAME} ${ECR_REPO}:${IMAGE_TAG}
+
+                    echo "Pulling latest image from ECR..."
+                    docker pull ${ECR_REPO_URI}:${IMAGE_TAG}
+
+                    echo "Running new container..."
+                    docker run -d --name ${CONTAINER_NAME} -p 3000:3000 ${ECR_REPO_URI}:${IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                echo 'Checking application health...'
+                sh """
+                    sleep 10
+                    curl -f http://localhost:3000 || echo "⚠️ App may not be running correctly."
                 """
             }
         }
     }
 
     post {
-        always {
-            echo 'Pipeline completed. Cleaning up resources...'
-        }
         success {
-            echo 'Build, push to ECR, and deployment successful!'
+            echo 'Build, push to ECR, and deploy successful!'
         }
         failure {
-            echo 'Build failed. Please check logs in Jenkins console output.'
+            echo 'Build or deployment failed. Check Jenkins logs for details.'
+        }
+        always {
+            echo 'Pipeline finished — cleaning up temporary data if any.'
         }
     }
 }
