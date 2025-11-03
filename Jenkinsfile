@@ -5,54 +5,58 @@ pipeline {
         AWS_ACCOUNT_ID = '132121093853'
         AWS_REGION = 'us-east-1'
         ECR_REPO_NAME = 'test'
-        IMAGE_NAME = 'node-app'
-        CONTAINER_NAME = 'node-app-container'
         IMAGE_TAG = 'latest'
-        ECR_REPO_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
-        PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Clone Repository') {
             steps {
-                echo 'Cloning repository...'
+                echo 'Cloning source code from GitHub...'
                 git branch: 'main', url: 'https://github.com/Divya180804/node-app.git'
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build') {
             steps {
-                echo 'Installing Node.js dependencies...'
+                echo 'Installing dependencies and building the application...'
                 sh 'npm install'
             }
         }
 
-        stage('Run Tests') {
+        stage('Test') {
             steps {
-                echo 'Running tests...'
-                sh 'npm test || echo "No tests configured — skipping..."'
+                echo 'Running tests (optional)...'
+                script {
+                    sh '''
+                        if [ -f package.json ]; then
+                            npm test || echo "No tests found or tests failed — continuing pipeline."
+                        else
+                            echo "package.json not found — skipping test stage."
+                        fi
+                    '''
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 echo 'Building Docker image...'
-                sh """
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPO_URI}:${IMAGE_TAG}
-                """
+                sh 'docker build -t ${ECR_REPO_NAME}:${IMAGE_TAG} .'
             }
         }
 
-        stage('Push to AWS ECR') {
+        stage('Push to ECR') {
             steps {
-                echo 'Authenticating and pushing Docker image to ECR...'
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-creds']]) {
-                    sh """
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                        docker push ${ECR_REPO_URI}:${IMAGE_TAG}
-                    """
+                echo 'Pushing Docker image to AWS ECR...'
+                withAWS(region: "${AWS_REGION}", credentials: 'aws-creds') {
+                    script {
+                        sh '''
+                            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                            docker tag $ECR_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+                            docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+                        '''
+                    }
                 }
             }
         }
@@ -60,40 +64,65 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 echo 'Deploying container on EC2 instance...'
-                sh """
-                    echo "Stopping old container if running..."
-                    docker stop ${CONTAINER_NAME} || true
-                    docker rm ${CONTAINER_NAME} || true
+                withAWS(region: "${AWS_REGION}", credentials: 'aws-creds') {
+                    script {
+                        sh '''
+                            echo "Logging in to ECR..."
+                            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-                    echo "Pulling latest image from ECR..."
-                    docker pull ${ECR_REPO_URI}:${IMAGE_TAG}
+                            echo "Stopping old container (if running)..."
+                            docker ps -q --filter "name=cicd-app" | xargs -r docker stop
+                            docker ps -a -q --filter "name=cicd-app" | xargs -r docker rm
 
-                    echo "Running new container..."
-                    docker run -d --name ${CONTAINER_NAME} -p 3000:3000 ${ECR_REPO_URI}:${IMAGE_TAG}
-                """
+                            echo "Pulling latest image..."
+                            docker pull $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+
+                            echo "Starting new container..."
+                            docker run -d --name cicd-app -p 3000:8080 $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+                        '''
+                    }
+                }
             }
         }
 
-        stage('Health Check') {
+        stage('Post-Deploy Health Check') {
             steps {
-                echo 'Checking application health...'
-                sh """
-                    sleep 10
-                    curl -f http://localhost:3000 || echo "⚠️ App may not be running correctly."
-                """
+                echo 'Verifying that the deployed application is running...'
+                script {
+                    sh '''
+                        sleep 10  # Give container time to start
+                        curl -f http://localhost:3000 || echo "Health check failed, app may not be running correctly."
+                    '''
+                }
             }
         }
     }
 
     post {
         success {
-            echo 'Build, push to ECR, and deploy successful!'
+            echo ' Pipeline completed successfully!'
+            mail to: 'divyamurugesh18@gmail.com',
+                 subject: "SUCCESS: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
+                 body: """Hello Divya,
+
+The Jenkins build for job '${env.JOB_NAME}' completed successfully! 🎉
+Build Number: ${env.BUILD_NUMBER}
+View console output here: ${env.BUILD_URL}
+
+- Jenkins CI/CD Pipeline """
         }
+
         failure {
-            echo 'Build or deployment failed. Check Jenkins logs for details.'
-        }
-        always {
-            echo 'Pipeline finished — cleaning up temporary data if any.'
+            echo ' Pipeline failed — check logs for details.'
+            mail to: 'divyamurugesh18@gmail.com',
+                 subject: "FAILURE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
+                 body: """Hello Divya,
+
+The Jenkins build for job '${env.JOB_NAME}' has failed.
+Build Number: ${env.BUILD_NUMBER}
+You can review the logs here: ${env.BUILD_URL}
+
+- Jenkins CI/CD Pipeline"""
         }
     }
 }
