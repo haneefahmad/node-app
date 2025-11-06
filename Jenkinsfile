@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        AWS_ACCOUNT_ID = '132121093853'
+        AWS_ACCOUNT_ID = '098131747141'
         AWS_REGION = 'us-east-1'
-        ECR_REPO_NAME = 'test'
+        ECR_REPO_NAME = 'devopslab'
         IMAGE_TAG = 'latest'
     }
 
@@ -13,7 +13,7 @@ pipeline {
         stage('Clone Repository') {
             steps {
                 echo 'Cloning source code from GitHub...'
-                git branch: 'main', url: 'https://github.com/Divya180804/node-app.git'
+                git branch: 'main', url: 'https://github.com/haneefahmad/node-app.git'
             }
         }
 
@@ -101,9 +101,9 @@ pipeline {
     post {
         success {
             echo ' Pipeline completed successfully!'
-            mail to: 'divyamurugesh18@gmail.com',
+            mail to: 'haneefrko@gmail.com',
                  subject: "SUCCESS: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
-                 body: """Hello Divya,
+                 body: """Hello Haneef,
 
 The Jenkins build for job '${env.JOB_NAME}' completed successfully! 🎉
 Build Number: ${env.BUILD_NUMBER}
@@ -114,9 +114,9 @@ View console output here: ${env.BUILD_URL}
 
         failure {
             echo ' Pipeline failed — check logs for details.'
-            mail to: 'divyamurugesh18@gmail.com',
+            mail to: 'haneefrko@gmail.com',
                  subject: "FAILURE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
-                 body: """Hello Divya,
+                 body: """Hello Haneef,
 
 The Jenkins build for job '${env.JOB_NAME}' has failed.
 Build Number: ${env.BUILD_NUMBER}
