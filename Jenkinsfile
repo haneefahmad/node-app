@@ -49,7 +49,7 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 echo 'Pushing Docker image to AWS ECR...'
-                withAWS(region: "${AWS_REGION}", credentials: 'aws') {
+                withAWS(region: "${AWS_REGION}", credentials: 'aws-cred') {
                     script {
                         sh '''
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
@@ -64,7 +64,7 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 echo 'Deploying container on EC2 instance...'
-                withAWS(region: "${AWS_REGION}", credentials: 'aws') {
+                withAWS(region: "${AWS_REGION}", credentials: 'aws-cred') {
                     script {
                         sh '''
                             echo "Logging in to ECR..."
